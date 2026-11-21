@@ -1,16 +1,16 @@
 // VELTRIX — Tier 2 (Central SaaS) metadata schema.
 // Tier 1 keeps raw logs locally; only signed metadata crosses the trust boundary.
 //
-// LOCAL DEV: provider is "sqlite" so you can run against a local file DB.
-// PRODUCTION (Vercel): change provider to "postgresql" and set DATABASE_URL
-// to your Vercel Postgres / Neon / Supabase connection string before deploy.
+// Production uses PostgreSQL (Render Postgres, Neon, Vercel Postgres, etc.).
+// Set DATABASE_URL to the connection string provided by your Postgres host.
+// Run `bun run db:push` after setting DATABASE_URL to create all tables.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

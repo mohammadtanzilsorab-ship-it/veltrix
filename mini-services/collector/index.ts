@@ -32,9 +32,10 @@ import { join } from 'path'
 // Configuration
 // ---------------------------------------------------------------------------
 
-// Railway provides PORT; fall back to 3001 for local dev.
+// Render/Railway provide PORT; fall back to 3001 for local dev.
 const PORT = Number(process.env.PORT) || 3001
-const DB_PATH = join(import.meta.dir, 'collector.db')
+// DB path can be overridden (Render persistent disk, Railway volume, etc.)
+const DB_PATH = process.env.DB_PATH || join(import.meta.dir, 'collector.db')
 
 // Shared secret between Tier 1 collector and Tier 2 ingest API.
 // In production each tenant has its own rotating key; here we use one per tenant.

@@ -1,0 +1,73 @@
+# Render Blueprint — VELTRIX two-tier observability
+# Docs: https://render.com/docs/blueprint-spec
+#
+# This file defines three services Render will create when you connect
+# your GitHub repo:
+#   1. veltrix-db        — PostgreSQL database (Tier 2 metadata store)
+#   2. veltrix-app       — Next.js dashboard + ingest API (Tier 2)
+#   3. veltrix-collector — Bun + socket.io collector (Tier 1)
+#
+# After the initial deploy, set two cross-service env vars manually:
+#
+# On veltrix-app (Environment tab):
+#   NEXT_PUBLIC_COLLECTOR_URL = https://veltrix-collector.onrender.com
+#   COLLECTOR_BASE            = https://veltrix-collector.onrender.com
+#
+# On veltrix-collector (Environment tab):
+#   INGEST_URL   = https://veltrix-app.onrender.com/api/ingest
+#   CORS_ORIGIN  = https://veltrix-app.onrender.com
+
+databases:
+  - name: veltrix-db
+    databaseName: veltrix
+    region: oregon
+    plan: free
+    ipAllowList: []  # allow all connections
+
+services:
+  # ─────────────────────────────────────────────────────────────────────
+  # Next.js dashboard + ingest API — Tier 2
+  # ─────────────────────────────────────────────────────────────────────
+  - type: web
+    name: veltrix-app
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: veltrix-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      # These two must be set manually after the collector deploys —
+      # Render doesn't know the collector's URL until it exists.
+      - key: NEXT_PUBLIC_COLLECTOR_URL
+        sync: false
+      - key: COLLECTOR_BASE
+        sync: false
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Tier 1 collector — Bun + socket.io (long-running)
+  # ─────────────────────────────────────────────────────────────────────
+  - type: web
+    name: veltrix-collector
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./mini-services/collector/Dockerfile
+    dockerContext: ./mini-services/collector
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # These must be set manually after the app deploys.
+      - key: INGEST_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

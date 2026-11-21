@@ -1,0 +1,12 @@
+{
+  "name": "tier1-collector",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun run index.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  }
+}
