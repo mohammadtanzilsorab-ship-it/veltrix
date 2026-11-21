@@ -1,0 +1,126 @@
+// VELTRIX — Tier 2 (Central SaaS) metadata schema.
+// Tier 1 keeps raw logs locally; only signed metadata crosses the trust boundary.
+//
+// LOCAL DEV: provider is "sqlite" so you can run against a local file DB.
+// PRODUCTION (Vercel): change provider to "postgresql" and set DATABASE_URL
+// to your Vercel Postgres / Neon / Supabase connection string before deploy.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A tenant registered in the central SaaS platform.
+model Tenant {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. "tenant-a"
+  name      String
+  region    String // "EU" | "IN"
+  apiKey    String // X-API-Key used for ingest auth
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  packets       EgressPacket[]
+  healthMetrics HealthMetric[]
+  anomalies     AnomalyEvent[]
+  reconRecords  ReconciliationRecord[]
+  notifications Notification[]
+}
+
+// A signed metadata packet received from a Tier 1 collector.
+// Raw logs, IPs, usernames, payloads NEVER cross — only aggregates live here.
+model EgressPacket {
+  id           String   @id @default(cuid())
+  packetId     String   @unique // UUID assigned by Tier 1 outbox
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  sourceType   String // "app-server" | "network-device" | "security-source"
+  region       String
+  receivedAt   DateTime @default(now())
+  // Aggregated, masked metrics
+  eventCount   Int
+  errorCount   Int
+  avgLatencyMs Float
+  p95LatencyMs Float
+  uniqueHosts  Int
+  // Integrity
+  hmacSha256   String
+  signatureValid Boolean @default(true)
+  // Masked sample payload (no PII)
+  maskedPreview String
+
+  @@index([tenantId, receivedAt])
+}
+
+// Health rollup computed by the Health engine in Tier 2.
+model HealthMetric {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  timestamp    DateTime @default(now())
+  status       String // "healthy" | "degraded" | "down"
+  score        Int // 0-100
+  pipelineStep String // which Tier 1 step the score reflects
+  detail       String
+
+  @@index([tenantId, timestamp])
+}
+
+// Anomaly / incident detected by the AIOps engine.
+model AnomalyEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  detectedAt   DateTime @default(now())
+  severity     String // "low" | "medium" | "high" | "critical"
+  type         String // "latency-spike" | "error-burst" | "heartbeat-loss" ...
+  description  String
+  status       String // "open" | "acknowledged" | "remediated"
+  remediation  String?
+
+  @@index([tenantId, detectedAt])
+}
+
+// One row per heartbeat / egress packet reconciled against Tier 1 outbox.
+model ReconciliationRecord {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  packetId     String
+  tier1SentAt  DateTime
+  tier2ReceivedAt DateTime?
+  status       String // "delivered" | "pending" | "missing"
+  note         String
+
+  @@index([tenantId, status])
+}
+
+// Notification — a warning the main Tier 2 system surfaces to the operator
+// when something goes wrong in any connected system (collector, ingest
+// pipeline, health engine, AIOps engine). This is the "warn the main system"
+// feature: every error anywhere bubbles up here as an actionable alert.
+model Notification {
+  id            String    @id @default(cuid())
+  tenantId      String?   // null = system-wide, e.g. a global ingest failure
+  tenant        Tenant?   @relation(fields: [tenantId], references: [id])
+  severity      String    // "info" | "warning" | "critical"
+  sourceSystem  String    // e.g. "collector:tenant-a", "ingest-api", "health-engine", "aiops-engine", "heartbeat-monitor"
+  title         String
+  message       String
+  status        String    @default("active") // "active" | "acknowledged" | "resolved"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  acknowledgedAt DateTime?
+  resolvedAt    DateTime?
+  // Optional pointer to the related anomaly or packet for "Investigate" deep-link.
+  relatedAnomalyId  String?
+  relatedPacketId   String?
+
+  @@index([status, createdAt])
+  @@index([tenantId, status])
+  @@index([sourceSystem])
+}

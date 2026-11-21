@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "bun run db:generate && next build",
+  "installCommand": "bun install",
+  "regions": ["iad1"],
+  "functions": {
+    "src/app/api/ingest/route.ts": { "maxDuration": 30 },
+    "src/app/api/ingest/heartbeat/route.ts": { "maxDuration": 30 },
+    "src/app/api/chat/route.ts": { "maxDuration": 60 }
+  },
+  "crons": []
+}
